@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔐 ESCAPE ROOM: Informatische Systeme</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060610;--panel:#0d0d1a;--card:#121228;
+  --border:#1a3a5f;--accent:#00ccff;--green:#00ff88;
+  --red:#ff4455;--yellow:#ffd700;--purple:#bb55ff;
+  --text:#d0d0e0;--muted:#5a5a7a;
+}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px);pointer-events:none;z-index:999}
+
+.screen{display:none;min-height:100vh;padding-bottom:80px}
+.screen.active{display:block}
+
+/* HEADER */
+#game-header{display:none;position:sticky;top:0;z-index:100;background:var(--panel);border-bottom:1px solid var(--border);padding:10px 20px;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.timer{font-size:1.3rem;color:var(--accent);font-weight:bold}
+.timer.warn{color:var(--yellow)}
+.progress-row{display:flex;gap:8px;align-items:center}
+.dot{width:24px;height:24px;border-radius:50%;border:2px solid var(--muted);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--muted);transition:all .4s}
+.dot.done{background:var(--green);border-color:var(--green);color:#000;box-shadow:0 0 12px var(--green)}
+.dot.cur{border-color:var(--accent);color:var(--accent);box-shadow:0 0 10px rgba(0,204,255,.4)}
+.code-row{display:flex;gap:8px}
+.cbox{width:38px;height:46px;background:var(--card);border:2px solid var(--border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--muted);transition:all .4s}
+.cbox.lit{border-color:var(--green);color:var(--green);text-shadow:0 0 10px var(--green);box-shadow:0 0 10px rgba(0,255,136,.3)}
+
+/* INTRO */
+.intro-wrap{max-width:680px;margin:0 auto;padding:40px 20px;text-align:center}
+.glitch{font-size:2.2rem;color:var(--accent);text-shadow:0 0 30px var(--accent),0 0 60px rgba(0,204,255,.3);letter-spacing:4px;margin-bottom:20px;line-height:1.3}
+.story-box{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;text-align:left;margin:20px 0;line-height:1.8;color:#aab}
+.story-box strong{color:var(--yellow)}
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;text-align:left}
+.rule{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-size:.88rem;line-height:1.5}
+.rule span{color:var(--accent);font-size:1.1rem;margin-right:6px}
+
+/* ROOM */
+.room-wrap{max-width:760px;margin:0 auto;padding:24px 20px}
+.room-title{font-size:1.6rem;color:var(--accent);text-shadow:0 0 20px rgba(0,204,255,.5);margin-bottom:6px}
+.room-lore{color:var(--muted);font-size:.88rem;border-left:3px solid var(--border);padding-left:12px;line-height:1.6;margin-bottom:4px}
+.prog-wrap{background:var(--card);border-radius:4px;height:6px;margin:12px 0 0;overflow:hidden}
+.prog-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--purple));transition:width .5s;border-radius:4px}
+
+/* PANELS */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;margin:14px 0;transition:opacity .4s}
+.panel.locked{opacity:.35;pointer-events:none}
+.puz-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:5px}
+.puz-title{font-size:1.05rem;color:var(--yellow);margin-bottom:12px}
+.puz-q{line-height:1.75;margin-bottom:14px}
+
+/* BUTTONS */
+.btn{display:inline-block;padding:10px 22px;border:2px solid var(--accent);background:transparent;color:var(--accent);font-family:'Courier New',monospace;font-size:.95rem;cursor:pointer;border-radius:4px;transition:all .2s;letter-spacing:1px}
+.btn:hover{background:var(--accent);color:var(--bg);box-shadow:0 0 18px rgba(0,204,255,.6)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-g{border-color:var(--green);color:var(--green)}
+.btn-g:hover{background:var(--green);color:var(--bg);box-shadow:0 0 18px rgba(0,255,136,.6)}
+.btn-y{border-color:var(--yellow);color:var(--yellow)}
+.btn-y:hover{background:var(--yellow);color:var(--bg)}
+
+/* CHOICES — allow retry on wrong */
+.choices{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.choice{padding:11px 16px;border:1px solid var(--border);border-radius:5px;cursor:pointer;transition:border-color .2s,background .2s;background:var(--card);line-height:1.5}
+.choice:hover:not(.locked-choice){border-color:var(--accent)}
+.choice.flash-err{border-color:var(--red)!important;background:rgba(255,68,85,.12)!important;color:var(--red)!important}
+.choice.ok{border-color:var(--green);background:rgba(0,255,136,.1);color:var(--green);pointer-events:none;cursor:default}
+.locked-choice{pointer-events:none;cursor:default}
+
+/* INPUT */
+.inp{width:100%;padding:11px;background:var(--card);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'Courier New',monospace;font-size:1rem;margin-bottom:12px;transition:border-color .2s}
+.inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 8px rgba(0,204,255,.2)}
+
+/* FEEDBACK */
+.fb{padding:11px 16px;border-radius:5px;margin-top:8px;display:none;line-height:1.5;font-size:.92rem}
+.fb.show{display:block}
+.fb.ok{background:rgba(0,255,136,.08);border:1px solid var(--green);color:var(--green)}
+.fb.err{background:rgba(255,68,85,.08);border:1px solid var(--red);color:var(--red)}
+.fb.hint{background:rgba(255,215,0,.07);border:1px solid var(--yellow);color:var(--yellow)}
+
+/* DIGIT REVEAL */
+.digit-reveal{text-align:center;padding:28px;background:var(--card);border:2px solid var(--green);border-radius:10px;margin:18px 0;display:none}
+.digit-reveal.show{display:block}
+.d-label{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px}
+.d-big{font-size:5rem;color:var(--green);text-shadow:0 0 40px var(--green);font-weight:bold;line-height:1}
+.d-msg{color:var(--muted);margin-top:10px;font-size:.88rem}
+
+/* MATCH GAME */
+.match-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-bottom:12px}
+.match-col{display:flex;flex-direction:column;gap:8px}
+.mi{padding:10px 14px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--card);transition:all .2s;font-size:.88rem;line-height:1.4}
+.mi:hover:not(.mi-done){border-color:var(--accent)}
+.mi.sel{border-color:var(--accent);background:rgba(0,204,255,.12);box-shadow:0 0 8px rgba(0,204,255,.3)}
+.mi.mi-ok{border-color:var(--green);background:rgba(0,255,136,.08);color:var(--green);pointer-events:none}
+.mi.mi-err-flash{border-color:var(--red)!important;background:rgba(255,68,85,.1)!important;color:var(--red)!important}
+.mi.mi-done{pointer-events:none}
+.match-hint{color:var(--muted);font-size:.8rem;margin-bottom:10px}
+
+/* SORT GAME */
+.sort-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.sort-item{padding:10px 16px;background:var(--card);border:1px solid var(--border);border-radius:5px;cursor:grab;display:flex;align-items:center;gap:10px;user-select:none;transition:border-color .2s,opacity .2s}
+.sort-item:active{cursor:grabbing}
+.sort-item.drag-over{border-color:var(--accent);background:rgba(0,204,255,.06)}
+.sort-item.dragging{opacity:.35}
+.sort-handle{color:var(--muted);font-size:1.1rem;flex-shrink:0}
+
+/* INLINE CODE */
+.icode{background:var(--card);padding:2px 8px;border-radius:3px;color:var(--yellow);font-size:.92em}
+
+/* FINAL */
+.final-wrap{max-width:540px;margin:0 auto;padding:30px 20px;text-align:center}
+.collected-grid{display:flex;gap:14px;justify-content:center;margin:20px 0;flex-wrap:wrap}
+.cc{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;text-align:center;min-width:120px}
+.cc-room{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.cc-digit{font-size:2.4rem;font-weight:bold;color:var(--green);text-shadow:0 0 15px var(--green)}
+.code-entry{display:flex;gap:12px;justify-content:center;margin:22px 0}
+.ce-inp{width:64px;height:76px;text-align:center;font-size:2rem;background:var(--card);border:2px solid var(--border);border-radius:8px;color:var(--accent);font-family:'Courier New',monospace;transition:all .2s}
+.ce-inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 12px rgba(0,204,255,.3)}
+.ce-inp.ok{border-color:var(--green)!important;color:var(--green)!important}
+.ce-inp.err-flash{border-color:var(--red)!important;animation:shake .4s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* WIN */
+.win-wrap{max-width:680px;margin:0 auto;padding:40px 20px;text-align:center}
+.win-title{font-size:2.8rem;color:var(--green);text-shadow:0 0 40px var(--green);margin-bottom:10px;animation:glow 2s ease-in-out infinite alternate}
+@keyframes glow{from{text-shadow:0 0 30px var(--green)}to{text-shadow:0 0 60px var(--green),0 0 100px rgba(0,255,136,.4)}}
+.win-panel{background:var(--panel);border:1px solid var(--green);border-radius:10px;padding:22px;text-align:left;margin:16px 0}
+.sum-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.92rem}
+.sum-row:last-child{border-bottom:none}
+.ok-mark{color:var(--green)}
+.star-row{font-size:2.5rem;margin:14px 0;letter-spacing:8px}
+
+/* HINTS */
+.hint-fab{position:fixed;bottom:22px;right:22px;background:var(--panel);border:2px solid var(--yellow);color:var(--yellow);padding:11px 20px;border-radius:50px;cursor:pointer;font-family:'Courier New',monospace;font-size:.9rem;z-index:500;display:none;transition:all .2s}
+.hint-fab:hover{background:var(--yellow);color:var(--bg)}
+.hint-fab:disabled{opacity:.4;cursor:not-allowed}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:590}
+.modal-bg.show{display:block}
+.modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:2px solid var(--yellow);border-radius:10px;padding:26px;width:90%;max-width:420px;z-index:600}
+.modal.show{display:block}
+.modal h3{color:var(--yellow);margin-bottom:14px}
+.modal p{line-height:1.7}
+.modal-sub{color:var(--muted);font-size:.78rem;margin-top:10px}
+
+/* MISC */
+.hlc{color:var(--accent);font-weight:bold}
+.hlg{color:var(--green)}
+.hly{color:var(--yellow)}
+</style>
+</head>
+<body>
+
+<!-- GAME HEADER -->
+<div id="game-header">
+  <div class="timer" id="timer-display">⏱ 00:00</div>
+  <div class="progress-row">
+    <div class="dot cur" id="d0">①</div>
+    <div class="dot" id="d1">②</div>
+    <div class="dot" id="d2">③</div>
+  </div>
+  <div class="code-row">
+    <div class="cbox" id="cb0">_</div>
+    <div class="cbox" id="cb1">_</div>
+    <div class="cbox" id="cb2">_</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════ INTRO -->
+<div id="screen-intro" class="screen active">
+<div class="intro-wrap">
+  <div class="glitch">🔐 ESCAPE ROOM</div>
+  <div style="color:var(--muted);letter-spacing:3px;margin-bottom:24px;font-size:.88rem">INFORMATISCHE SYSTEME · KLASSE 9</div>
+
+  <div class="story-box">
+    <strong>⚠ ALARM – 14:27 Uhr</strong><br><br>
+    Das gesamte Schulnetzwerk wurde von einem unbekannten Hacker gesperrt! Auf dem Monitor erscheint folgende Nachricht:
+    <br><br>
+    <span style="color:var(--red);display:block;text-align:center;font-size:1rem;margin:10px 0">
+    „Ihr habt 50 Minuten. Beweist euer Informatikwissen –<br>oder die Daten sind für immer verloren."
+    </span>
+    <br>
+    Drei Bereiche des Systems sind gesperrt. In jedem steckt eine Ziffer des Master-Codes. Findet alle drei – und rettet die Schule!
+  </div>
+
+  <div class="rules">
+    <div class="rule"><span>⏱</span> <strong style="color:var(--accent)">~50 Minuten</strong><br>Timer läuft nach Start</div>
+    <div class="rule"><span>🔑</span> <strong style="color:var(--yellow)">3 Räume</strong><br>Jeder Raum = 1 Code-Ziffer</div>
+    <div class="rule"><span>💡</span> <strong style="color:var(--yellow)">3 Hinweise</strong><br>Sparsam einsetzen!</div>
+    <div class="rule"><span>🔄</span> <strong style="color:var(--green)">Kein Limit</strong><br>Falsch? Einfach nochmal!</div>
+  </div>
+
+  <div style="margin-top:28px">
+    <button class="btn btn-g" onclick="startGame()" style="font-size:1.1rem;padding:14px 36px">▶ MISSION STARTEN</button>
+  </div>
+  <div style="margin-top:36px;color:var(--muted);font-size:.78rem">Klasse 9 · Mathematik &amp; Informatik · Informatische Systeme</div>
+</div>
+</div>
+
+<!-- ══════════════════════════════ RAUM 1: BINÄRLABOR -->
+<div id="screen-room1" class="screen">
+<div class="room-wrap">
+  <div style="margin-bottom:18px">
+    <div class="room-title">🔢 Raum 1: Das Binärlabor</div>
+    <div class="room-lore">Ihr betretet den Serverraum. Alle Daten sind im Binärsystem verschlüsselt. Löst die drei Aufgaben, um die erste Code-Ziffer zu entschlüsseln.</div>
+    <div class="prog-wrap"><div class="prog-bar" id="r1-prog" style="width:0%"></div></div>
+  </div>
+
+  <!-- P1 -->
+  <div class="panel" id="r1p1">
+    <div class="puz-label">Aufgabe 1 von 3</div>
+    <div class="puz-title">Binär zu Dezimal</div>
+    <div class="puz-q">
+      Im Binärsystem (Basis 2) hat jede Stelle einen Wert: Von rechts sind es 2⁰=1, 2¹=2, 2²=4, 2³=8, …<br><br>
+      <strong>Welchen Dezimalwert hat die Binärzahl <span class="icode">1010</span>?</strong>
+    </div>
+    <div class="choices" id="r1p1-c">
+      <div class="choice" onclick="checkMC('r1p1',this,false)">A)&nbsp; 8</div>
+      <div class="choice" onclick="checkMC('r1p1',this,true)">B)&nbsp; 10</div>
+      <div class="choice" onclick="checkMC('r1p1',this,false)">C)&nbsp; 12</div>
+      <div class="choice" onclick="checkMC('r1p1',this,false)">D)&nbsp; 6</div>
+    </div>
+    <div class="fb" id="r1p1-fb"></div>
+  </div>
+
+  <!-- P2 -->
+  <div class="panel locked" id="r1p2">
+    <div class="puz-label">Aufgabe 2 von 3</div>
+    <div class="puz-title">Dezimal zu Binär</div>
+    <div class="puz-q">
+      Jetzt andersherum: Ihr müsst Dezimalzahlen in Binärcode umwandeln.<br><br>
+      <strong>Wie lautet die Dezimalzahl <span class="icode">6</span> im Binärsystem?</strong><br>
+      <span style="color:var(--muted);font-size:.84rem">Tipp: 6 = 4 + 2 = 2² + 2¹</span>
+    </div>
+    <div class="choices" id="r1p2-c">
+      <div class="choice" onclick="checkMC('r1p2',this,false)">A)&nbsp; 101</div>
+      <div class="choice" onclick="checkMC('r1p2',this,true)">B)&nbsp; 110</div>
+      <div class="choice" onclick="checkMC('r1p2',this,false)">C)&nbsp; 100</div>
+      <div class="choice" onclick="checkMC('r1p2',this,false)">D)&nbsp; 111</div>
+    </div>
+    <div class="fb" id="r1p2-fb"></div>
+  </div>
+
+  <!-- P3: Code Digit -->
+  <div class="panel locked" id="r1p3">
+    <div class="puz-label">Aufgabe 3 von 3 · CODE-ZIFFER</div>
+    <div class="puz-title">Das Binärsignal</div>
+    <div class="puz-q">
+      Ein Binärsignal blinkt auf dem Bildschirm:<br><br>
+      <div style="text-align:center;font-size:1.8rem;letter-spacing:8px;color:var(--green);margin:14px 0;text-shadow:0 0 20px var(--green)">0000 0100</div>
+      <strong>Welchen Dezimalwert hat diese Binärzahl?</strong><br>
+      <span style="color:var(--muted);font-size:.84rem">Dieser Wert ist eure erste Code-Ziffer!</span>
+    </div>
+    <input class="inp" id="r1p3-inp" type="number" min="0" max="255" placeholder="Dezimalwert eingeben …">
+    <button class="btn" onclick="checkNumInp('r1p3','4',1)">Bestätigen</button>
+    <div class="fb" id="r1p3-fb"></div>
+    <div class="digit-reveal" id="r1-reveal">
+      <div class="d-label">Erste Code-Ziffer gefunden!</div>
+      <div class="d-big">4</div>
+      <div class="d-msg">🔓 Raum 1 entsperrt! Weiter in den Serverraum …</div>
+    </div>
+    <div id="r1-next" style="display:none;margin-top:16px">
+      <button class="btn btn-g" onclick="goRoom(2)">Weiter zu Raum 2 →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════ RAUM 2: SERVERRAUM (HARDWARE) -->
+<div id="screen-room2" class="screen">
+<div class="room-wrap">
+  <div style="margin-bottom:18px">
+    <div class="room-title">💻 Raum 2: Der Serverraum</div>
+    <div class="room-lore">Überall Kabel, Platinen und Komponenten. Der Hacker hat die Beschriftungen vertauscht und die Ordnung durcheinandergebracht. Bringt das System wieder zum Laufen!</div>
+    <div class="prog-wrap"><div class="prog-bar" id="r2-prog" style="width:0%"></div></div>
+  </div>
+
+  <!-- P1: Matching -->
+  <div class="panel" id="r2p1">
+    <div class="puz-label">Aufgabe 1 von 3</div>
+    <div class="puz-title">Hardware-Komponenten zuordnen</div>
+    <div class="puz-q">Die Beschriftungen wurden vom Hacker durcheinandergewürfelt.</div>
+    <div class="match-hint">👆 Klicke zuerst eine <span class="hlc">Komponente</span> (links), dann die passende <span class="hly">Beschreibung</span> (rechts).</div>
+    <div class="match-grid">
+      <div class="match-col" id="r2p1-left">
+        <div class="mi" id="ml-cpu" onclick="selectLeft('cpu',this)">CPU</div>
+        <div class="mi" id="ml-ram" onclick="selectLeft('ram',this)">RAM</div>
+        <div class="mi" id="ml-ssd" onclick="selectLeft('ssd',this)">SSD</div>
+        <div class="mi" id="ml-gpu" onclick="selectLeft('gpu',this)">GPU</div>
+        <div class="mi" id="ml-mb"  onclick="selectLeft('mb',this)">Mainboard</div>
+      </div>
+      <div class="match-col" id="r2p1-right">
+        <div class="mi" id="mr-ssd" onclick="selectRight('ssd',this)">Permanenter Datenspeicher (auch nach Ausschalten)</div>
+        <div class="mi" id="mr-cpu" onclick="selectRight('cpu',this)">Führt alle Berechnungen &amp; Programmbefehle aus</div>
+        <div class="mi" id="mr-mb"  onclick="selectRight('mb',this)">Verbindet alle Komponenten miteinander</div>
+        <div class="mi" id="mr-gpu" onclick="selectRight('gpu',this)">Zuständig für die Grafikverarbeitung &amp; Bildausgabe</div>
+        <div class="mi" id="mr-ram" onclick="selectRight('ram',this)">Flüchtiger Arbeitsspeicher – Daten weg nach Neustart</div>
+      </div>
+    </div>
+    <div class="fb" id="r2p1-fb"></div>
+  </div>
+
+  <!-- P2: Sorting -->
+  <div class="panel locked" id="r2p2">
+    <div class="puz-label">Aufgabe 2 von 3</div>
+    <div class="puz-title">Speichergrößen sortieren</div>
+    <div class="puz-q">
+      Die Speichereinheiten wurden durcheinandergewürfelt. Bringe sie in die richtige Reihenfolge – von <span class="hlg">kleinst</span> nach <span class="hly">größt</span>.<br>
+      <span style="color:var(--muted);font-size:.84rem">Ziehe die Einträge mit der Maus an die richtige Position.</span>
+    </div>
+    <div class="sort-list" id="r2p2-sort">
+      <div class="sort-item" draggable="true" data-val="GB"><span class="sort-handle">⠿</span>Gigabyte (GB)</div>
+      <div class="sort-item" draggable="true" data-val="Byte"><span class="sort-handle">⠿</span>Byte</div>
+      <div class="sort-item" draggable="true" data-val="TB"><span class="sort-handle">⠿</span>Terabyte (TB)</div>
+      <div class="sort-item" draggable="true" data-val="KB"><span class="sort-handle">⠿</span>Kilobyte (KB)</div>
+      <div class="sort-item" draggable="true" data-val="Bit"><span class="sort-handle">⠿</span>Bit</div>
+      <div class="sort-item" draggable="true" data-val="MB"><span class="sort-handle">⠿</span>Megabyte (MB)</div>
+    </div>
+    <button class="btn" onclick="checkSort()">Reihenfolge prüfen</button>
+    <div class="fb" id="r2p2-fb"></div>
+  </div>
+
+  <!-- P3: Code Digit -->
+  <div class="panel locked" id="r2p3">
+    <div class="puz-label">Aufgabe 3 von 3 · CODE-ZIFFER</div>
+    <div class="puz-title">Die geheime Zahl</div>
+    <div class="puz-q">
+      Auf einem Aufkleber am Server steht:<br><br>
+      <div style="text-align:center;font-size:1.15rem;color:var(--yellow);margin:14px 0;letter-spacing:2px">„1 Byte = ??? Bit"</div>
+      <strong>Wie viele Bits hat genau 1 Byte?</strong><br>
+      <span style="color:var(--muted);font-size:.84rem">Diese Zahl ist eure zweite Code-Ziffer!</span>
+    </div>
+    <input class="inp" id="r2p3-inp" type="number" placeholder="Anzahl der Bits …">
+    <button class="btn" onclick="checkNumInp('r2p3','8',2)">Bestätigen</button>
+    <div class="fb" id="r2p3-fb"></div>
+    <div class="digit-reveal" id="r2-reveal">
+      <div class="d-label">Zweite Code-Ziffer gefunden!</div>
+      <div class="d-big">8</div>
+      <div class="d-msg">🔓 Raum 2 entsperrt! Weiter ins Informatik-Quiz …</div>
+    </div>
+    <div id="r2-next" style="display:none;margin-top:16px">
+      <button class="btn btn-g" onclick="goRoom(3)">Weiter zu Raum 3 →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════ RAUM 3: INFORMATIK-QUIZ -->
+<div id="screen-room3" class="screen">
+<div class="room-wrap">
+  <div style="margin-bottom:18px">
+    <div class="room-title">🖥️ Raum 3: Das Informatik-Quiz</div>
+    <div class="room-lore">Letzter Raum! Hier testet der Hacker euer allgemeines Informatikwissen. Beweist, dass ihr mehr als nur Technik kennt!</div>
+    <div class="prog-wrap"><div class="prog-bar" id="r3-prog" style="width:0%"></div></div>
+  </div>
+
+  <!-- P1 -->
+  <div class="panel" id="r3p1">
+    <div class="puz-label">Aufgabe 1 von 3</div>
+    <div class="puz-title">Informatik-Geschichte</div>
+    <div class="puz-q">
+      <strong>Wer hat Microsoft mitgegründet?</strong><br>
+      <span style="color:var(--muted);font-size:.84rem">Microsoft wurde 1975 von zwei Jugendfreunden gegründet.</span>
+    </div>
+    <div class="choices" id="r3p1-c">
+      <div class="choice" onclick="checkMC('r3p1',this,false)">A)&nbsp; Steve Jobs</div>
+      <div class="choice" onclick="checkMC('r3p1',this,true)">B)&nbsp; Bill Gates</div>
+      <div class="choice" onclick="checkMC('r3p1',this,false)">C)&nbsp; Larry Page</div>
+      <div class="choice" onclick="checkMC('r3p1',this,false)">D)&nbsp; Linus Torvalds</div>
+    </div>
+    <div class="fb" id="r3p1-fb"></div>
+  </div>
+
+  <!-- P2 -->
+  <div class="panel locked" id="r3p2">
+    <div class="puz-label">Aufgabe 2 von 3</div>
+    <div class="puz-title">Abkürzungen der Informatik</div>
+    <div class="puz-q">
+      <strong>Wofür steht die Abkürzung <span class="icode">CPU</span>?</strong>
+    </div>
+    <div class="choices" id="r3p2-c">
+      <div class="choice" onclick="checkMC('r3p2',this,true)">A)&nbsp; Central Processing Unit</div>
+      <div class="choice" onclick="checkMC('r3p2',this,false)">B)&nbsp; Computer Power Unit</div>
+      <div class="choice" onclick="checkMC('r3p2',this,false)">C)&nbsp; Core Program Utility</div>
+      <div class="choice" onclick="checkMC('r3p2',this,false)">D)&nbsp; Central Processing Upgrade</div>
+    </div>
+    <div class="fb" id="r3p2-fb"></div>
+  </div>
+
+  <!-- P3: Code Digit -->
+  <div class="panel locked" id="r3p3">
+    <div class="puz-label">Aufgabe 3 von 3 · CODE-ZIFFER</div>
+    <div class="puz-title">Die letzte Ziffer</div>
+    <div class="puz-q">
+      Eine kleine Rechenaufgabe zum Abschluss – die Antwort ist eure letzte Code-Ziffer!<br><br>
+      <strong>Welchen Dezimalwert hat die Binärzahl <span class="icode">0010</span>?</strong>
+    </div>
+    <input class="inp" id="r3p3-inp" type="number" placeholder="Dezimalwert …">
+    <button class="btn" onclick="checkNumInp('r3p3','2',3)">Bestätigen</button>
+    <div class="fb" id="r3p3-fb"></div>
+    <div class="digit-reveal" id="r3-reveal">
+      <div class="d-label">Dritte Code-Ziffer gefunden!</div>
+      <div class="d-big">2</div>
+      <div class="d-msg">🔓 Alle Räume entsperrt! Den Master-Code eingeben …</div>
+    </div>
+    <div id="r3-next" style="display:none;margin-top:16px">
+      <button class="btn btn-g" onclick="goFinal()">Code eingeben →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════ FINAL CODE -->
+<div id="screen-final" class="screen">
+<div class="final-wrap">
+  <div style="padding:30px 0 16px">
+    <div style="font-size:2rem;color:var(--accent);text-shadow:0 0 20px var(--accent);margin-bottom:8px;letter-spacing:3px">🔐 MASTER-CODE</div>
+    <div style="color:var(--muted)">Ihr habt alle drei Ziffern gesammelt. Entsperrt das System!</div>
+  </div>
+
+  <div class="collected-grid">
+    <div class="cc"><div class="cc-room">Binärlabor</div><div class="cc-digit">4</div></div>
+    <div class="cc"><div class="cc-room">Serverraum</div><div class="cc-digit">8</div></div>
+    <div class="cc"><div class="cc-room">Informatik-Quiz</div><div class="cc-digit">2</div></div>
+  </div>
+
+  <div style="color:var(--muted);font-size:.84rem;margin-bottom:4px">Gebt den 3-stelligen Code ein:</div>
+  <div class="code-entry">
+    <input class="ce-inp" id="ce0" type="number" min="0" max="9" oninput="codeNav(0)" placeholder="?">
+    <input class="ce-inp" id="ce1" type="number" min="0" max="9" oninput="codeNav(1)" placeholder="?">
+    <input class="ce-inp" id="ce2" type="number" min="0" max="9" oninput="codeNav(2)" placeholder="?">
+  </div>
+  <button class="btn btn-g" onclick="checkFinalCode()" style="font-size:1rem;padding:12px 32px">🔓 ENTSPERREN</button>
+  <div class="fb" id="final-fb" style="margin-top:14px"></div>
+</div>
+</div>
+
+<!-- ══════════════════════════════ WIN -->
+<div id="screen-win" class="screen">
+<div class="win-wrap">
+  <div style="font-size:3rem;margin-bottom:8px">🎉</div>
+  <div class="win-title">SYSTEM ENTSPERRT!</div>
+  <div id="win-time" style="color:var(--yellow);font-size:1.2rem;margin-bottom:8px"></div>
+  <div style="color:var(--muted);margin-bottom:18px">Ihr habt es geschafft! Die Schule ist gerettet.</div>
+  <div class="star-row" id="star-row">★★★</div>
+
+  <div class="win-panel">
+    <div style="color:var(--accent);margin-bottom:14px;letter-spacing:1px">📊 ZUSAMMENFASSUNG</div>
+    <div class="sum-row"><span>🔢 Raum 1: Binärlabor</span><span class="ok-mark">✓ Ziffer: 4</span></div>
+    <div class="sum-row"><span>💻 Raum 2: Serverraum</span><span class="ok-mark">✓ Ziffer: 8</span></div>
+    <div class="sum-row"><span>🖥️ Raum 3: Informatik-Quiz</span><span class="ok-mark">✓ Ziffer: 2</span></div>
+    <div class="sum-row"><span>🔐 Master-Code</span><span style="color:var(--yellow);font-size:1.1rem;font-weight:bold">4-8-2</span></div>
+    <div class="sum-row"><span>⏱ Benötigte Zeit</span><span id="win-time2" style="color:var(--accent)">–</span></div>
+    <div class="sum-row"><span>💡 Hinweise genutzt</span><span id="win-hints" style="color:var(--muted)">–</span></div>
+  </div>
+  <div style="margin-top:22px">
+    <button class="btn" onclick="location.reload()">↺ Nochmal spielen</button>
+  </div>
+</div>
+</div>
+
+<!-- HINT SYSTEM -->
+<button class="hint-fab" id="hint-fab" onclick="showHint()">💡 Hinweis (<span id="hints-left">3</span>)</button>
+<div class="modal-bg" id="modal-bg" onclick="closeHint()"></div>
+<div class="modal" id="hint-modal">
+  <h3>💡 Hinweis</h3>
+  <p id="hint-text">–</p>
+  <div class="modal-sub" id="hint-left-info"></div>
+  <button class="btn btn-y" onclick="closeHint()" style="margin-top:18px;width:100%">Verstanden</button>
+</div>
+
+<script>
+// ── STATE ────────────────────────────────────────────────────
+const G = {
+  room: 0,
+  done: [0, 0, 0],   // puzzles completed per room
+  digits: ['_','_','_'],
+  hintsUsed: 0,
+  maxHints: 3,
+  startTime: null,
+  timerInt: null,
+  matchSel: null,
+  matchDone: new Set(),
+  dragSrc: null,
+  mcAttempts: {},
+  finalAttempts: 0
+};
+const CODE = '482';
+
+// ── TIMER ────────────────────────────────────────────────────
+function startGame() {
+  G.startTime = Date.now();
+  G.timerInt = setInterval(tickTimer, 1000);
+  document.getElementById('game-header').style.display = 'flex';
+  document.getElementById('hint-fab').style.display = 'block';
+  goRoom(1);
+}
+
+function tickTimer() {
+  const s = Math.floor((Date.now() - G.startTime) / 1000);
+  const el = document.getElementById('timer-display');
+  el.textContent = `⏱ ${pad(Math.floor(s/60))}:${pad(s%60)}`;
+  el.className = 'timer' + (s > 40*60 ? ' warn' : '');
+}
+
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function getElapsed() {
+  const s = Math.floor((Date.now() - G.startTime) / 1000);
+  return `${pad(Math.floor(s/60))}:${pad(s%60)}`;
+}
+
+// ── NAVIGATION ───────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function goRoom(n) {
+  G.room = n;
+  updateDots();
+  updateHintFab();
+  showScreen('screen-room' + n);
+  if (n === 2) initSort();
+}
+
+function goFinal() {
+  clearInterval(G.timerInt);
+  showScreen('screen-final');
+  document.getElementById('hint-fab').style.display = 'none';
+}
+
+function updateDots() {
+  for (let i = 0; i < 3; i++) {
+    const d = document.getElementById('d' + i);
+    d.className = 'dot';
+    if (G.done[i] >= 3) d.classList.add('done');
+    else if (G.room === i + 1) d.classList.add('cur');
+  }
+}
+
+function unlockPanel(id) {
+  const p = document.getElementById(id);
+  p.classList.remove('locked');
+  setTimeout(() => p.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+function setProgress(room, step) {
+  G.done[room - 1] = step;
+  document.getElementById('r' + room + '-prog').style.width = (step / 3 * 100) + '%';
+  updateDots();
+}
+
+function litCodeBox(idx, digit) {
+  G.digits[idx] = digit;
+  const b = document.getElementById('cb' + idx);
+  b.textContent = digit;
+  b.classList.add('lit');
+}
+
+// ── MULTIPLE CHOICE – no answer reveal, allow retry ───────────
+function checkMC(id, el, correct) {
+  if (!G.mcAttempts[id]) G.mcAttempts[id] = 0;
+  const fb = document.getElementById(id + '-fb');
+
+  if (correct) {
+    document.querySelectorAll('#' + id + '-c .choice').forEach(c => c.classList.add('locked-choice'));
+    el.classList.add('ok');
+    fb.className = 'fb ok show';
+    fb.textContent = '✓ Richtig! Gut gemacht!';
+    const room = parseInt(id[1]);
+    const puz  = parseInt(id[3]);
+    setTimeout(() => {
+      setProgress(room, puz);
+      unlockPanel('r' + room + 'p' + (puz + 1));
+    }, 700);
+  } else {
+    G.mcAttempts[id]++;
+    el.classList.add('flash-err');
+    fb.className = 'fb err show';
+    if (G.mcAttempts[id] >= 3) {
+      fb.className = 'fb hint show';
+      fb.textContent = '💡 Tipp: Nutzt die Informationen aus der Aufgabenstellung oder einen Hinweis!';
+    } else {
+      fb.textContent = '✗ Leider falsch – versucht es nochmal!';
+    }
+    setTimeout(() => {
+      el.classList.remove('flash-err');
+      if (fb.className.includes('err')) fb.classList.remove('show');
+    }, 1400);
+  }
+}
+
+// ── NUMBER INPUT CHECK ────────────────────────────────────────
+// roomNum: 1/2/3  → puzzle 3 of that room (always the digit reveal)
+function checkNumInp(id, expected, roomNum) {
+  const inpEl = document.getElementById(id + '-inp');
+  const fb    = document.getElementById(id + '-fb');
+  const val   = inpEl.value.trim();
+
+  if (val === expected) {
+    fb.className = 'fb ok show';
+    inpEl.disabled = true;
+    // find and disable the submit button
+    inpEl.nextElementSibling.disabled = true;
+    // reveal digit
+    const idx = roomNum - 1;
+    litCodeBox(idx, expected);
+    setProgress(roomNum, 3);
+    document.getElementById('r' + roomNum + '-reveal').classList.add('show');
+    document.getElementById('r' + roomNum + '-next').style.display = 'block';
+
+    const msgs = {
+      'r1p3': '✓ Richtig! 0000 0100 = 4 (nur 2² ist gesetzt).',
+      'r2p3': '✓ Richtig! 1 Byte = 8 Bit – eine der wichtigsten Grundeinheiten.',
+      'r3p3': '✓ Richtig! 0010 im Binärsystem = 2 im Dezimalsystem.',
+    };
+    fb.textContent = msgs[id] || '✓ Richtig!';
+  } else {
+    fb.className = 'fb err show';
+    fb.textContent = '✗ Nicht ganz – überprüft eure Rechnung!';
+    setTimeout(() => fb.classList.remove('show'), 1800);
+  }
+}
+
+// ── ROOM 2: MATCHING ─────────────────────────────────────────
+function selectLeft(key, el) {
+  if (G.matchDone.has(key)) return;
+  document.querySelectorAll('#r2p1-left .mi').forEach(m => m.classList.remove('sel'));
+  G.matchSel = key;
+  el.classList.add('sel');
+  document.getElementById('r2p1-fb').classList.remove('show');
+}
+
+function selectRight(key, el) {
+  const fb = document.getElementById('r2p1-fb');
+  if (!G.matchSel) {
+    fb.className = 'fb err show';
+    fb.textContent = 'Wähle zuerst eine Komponente links aus!';
+    setTimeout(() => fb.classList.remove('show'), 1800);
+    return;
+  }
+  if (G.matchDone.has(key)) return;
+
+  const leftEl = document.getElementById('ml-' + G.matchSel);
+  if (G.matchSel === key) {
+    // correct
+    leftEl.classList.remove('sel');
+    leftEl.classList.add('mi-ok', 'mi-done');
+    el.classList.add('mi-ok', 'mi-done');
+    G.matchDone.add(key);
+    G.matchSel = null;
+    fb.className = 'fb ok show';
+    fb.textContent = '✓ Richtig!';
+    if (G.matchDone.size === 5) {
+      setTimeout(() => {
+        fb.textContent = '✓ Alle 5 Komponenten korrekt zugeordnet!';
+        setProgress(2, 1);
+        unlockPanel('r2p2');
+      }, 500);
+    }
+  } else {
+    // wrong – flash both, no reveal
+    leftEl.classList.add('mi-err-flash');
+    el.classList.add('mi-err-flash');
+    G.matchSel = null;
+    fb.className = 'fb err show';
+    fb.textContent = '✗ Das passt nicht – versucht es erneut!';
+    setTimeout(() => {
+      leftEl.classList.remove('mi-err-flash', 'sel');
+      el.classList.remove('mi-err-flash');
+      fb.classList.remove('show');
+    }, 1300);
+  }
+}
+
+// ── ROOM 2: SORT ─────────────────────────────────────────────
+const SORT_ORDER = ['Bit','Byte','KB','MB','GB','TB'];
+
+function initSort() {
+  document.querySelectorAll('#r2p2-sort .sort-item').forEach(item => {
+    item.addEventListener('dragstart', function(e) {
+      G.dragSrc = this;
+      this.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      document.querySelectorAll('.sort-item').forEach(i => i.classList.remove('drag-over'));
+      this.classList.add('drag-over');
+    });
+    item.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (G.dragSrc && G.dragSrc !== this) {
+        const list = document.getElementById('r2p2-sort');
+        const items = [...list.querySelectorAll('.sort-item')];
+        const si = items.indexOf(G.dragSrc), di = items.indexOf(this);
+        list.insertBefore(G.dragSrc, si < di ? this.nextSibling : this);
+      }
+      this.classList.remove('drag-over');
+    });
+    item.addEventListener('dragend', function() {
+      this.classList.remove('dragging');
+      document.querySelectorAll('.sort-item').forEach(i => i.classList.remove('drag-over'));
+    });
+  });
+}
+
+function checkSort() {
+  const vals = [...document.querySelectorAll('#r2p2-sort .sort-item')].map(i => i.dataset.val);
+  const fb = document.getElementById('r2p2-fb');
+  if (JSON.stringify(vals) === JSON.stringify(SORT_ORDER)) {
+    fb.className = 'fb ok show';
+    fb.textContent = '✓ Perfekt! Bit < Byte < KB < MB < GB < TB';
+    setTimeout(() => { setProgress(2, 2); unlockPanel('r2p3'); }, 700);
+  } else {
+    fb.className = 'fb err show';
+    fb.textContent = '✗ Reihenfolge noch nicht ganz richtig – versucht es nochmal!';
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  }
+}
+
+// ── FINAL CODE ───────────────────────────────────────────────
+function codeNav(idx) {
+  const el = document.getElementById('ce' + idx);
+  if (el.value.length > 1) el.value = el.value.slice(-1);
+  if (el.value && idx < 2) document.getElementById('ce' + (idx + 1)).focus();
+}
+
+function checkFinalCode() {
+  const entered = [0,1,2].map(i => document.getElementById('ce'+i).value).join('');
+  const fb = document.getElementById('final-fb');
+  G.finalAttempts++;
+  if (entered === CODE) {
+    [0,1,2].forEach(i => document.getElementById('ce'+i).classList.add('ok'));
+    const t = getElapsed();
+    setTimeout(() => showWin(t), 700);
+  } else {
+    [0,1,2].forEach(i => {
+      const el = document.getElementById('ce'+i);
+      el.classList.add('err-flash');
+      setTimeout(() => el.classList.remove('err-flash'), 500);
+    });
+    fb.className = 'fb err show';
+    const msg = G.finalAttempts >= 3
+      ? '✗ Schaut auf die gesammelten Ziffern oben – in der richtigen Reihenfolge: Binärlabor → Serverraum → Quiz.'
+      : '✗ Falscher Code – versucht es erneut!';
+    fb.textContent = msg;
+  }
+}
+
+function showWin(time) {
+  showScreen('screen-win');
+  document.getElementById('game-header').style.display = 'none';
+  document.getElementById('win-time').textContent = '⏱ Zeit: ' + time;
+  document.getElementById('win-time2').textContent = time;
+  document.getElementById('win-hints').textContent = G.hintsUsed + ' von ' + G.maxHints;
+  const secs = Math.floor((Date.now() - G.startTime) / 1000);
+  document.getElementById('star-row').textContent =
+    secs < 25*60 && G.hintsUsed === 0 ? '★★★' :
+    secs < 40*60 && G.hintsUsed <= 1  ? '★★★' :
+    G.hintsUsed <= 2                   ? '★★☆' : '★☆☆';
+}
+
+// ── HINTS ────────────────────────────────────────────────────
+const HINTS = {
+  '1-1': 'Schreibe die Stellenwerte auf: 1×2³ + 0×2² + 1×2¹ + 0×2⁰. Was ergibt die Summe der gesetzten Stellen?',
+  '1-2': '6 lässt sich schreiben als 4 + 2. Welche Potenzen von 2 sind das? (2² = 4, 2¹ = 2)',
+  '1-3': 'Nur die dritte Stelle von rechts (2²) ist gesetzt. 2² = ?',
+  '2-1': 'RAM verliert seine Daten beim Ausschalten – er ist „flüchtig". CPU = der Prozessor = das Rechenzentrum des Computers.',
+  '2-2': 'Kleinste Einheit: Bit. Dann kommt Byte, dann die SI-Vorsätze Kilo, Mega, Giga, Tera – immer je etwa 1000× größer.',
+  '2-3': '1 Byte besteht aus 8 Bit – das ist eine der wichtigsten Grunddefinitionen der Informatik.',
+  '3-1': 'Microsoft wurde 1975 von Bill Gates und seinem Schulfreund Paul Allen gegründet. Steve Jobs gründete Apple.',
+  '3-2': 'CPU steht für „Central Processing Unit" – auf Deutsch: Zentrale Verarbeitungseinheit.',
+  '3-3': 'Nur die zweite Stelle von rechts (2¹) ist gesetzt. 2¹ = ?',
+};
+
+function updateHintFab() {
+  const left = G.maxHints - G.hintsUsed;
+  document.getElementById('hints-left').textContent = left;
+  document.getElementById('hint-fab').disabled = left === 0;
+}
+
+function showHint() {
+  if (G.hintsUsed >= G.maxHints) return;
+  const room = G.room;
+  if (!room) return;
+  const puz = Math.min(G.done[room-1] + 1, 3);
+  const key = room + '-' + puz;
+  const text = HINTS[key] || 'Lest die Aufgabenstellung noch einmal aufmerksam durch!';
+  G.hintsUsed++;
+  const left = G.maxHints - G.hintsUsed;
+  document.getElementById('hint-text').textContent = text;
+  document.getElementById('hint-left-info').textContent =
+    left === 0 ? '⚠ Das war der letzte Hinweis!' : `Noch ${left} Hinweis${left===1?'':'e'} verfügbar.`;
+  updateHintFab();
+  document.getElementById('modal-bg').classList.add('show');
+  document.getElementById('hint-modal').classList.add('show');
+}
+
+function closeHint() {
+  document.getElementById('modal-bg').classList.remove('show');
+  document.getElementById('hint-modal').classList.remove('show');
+}
+
+// Enter-Taste für Texteingaben
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const a = document.activeElement;
+    if (a && a.classList.contains('inp') && !a.disabled) {
+      const btn = a.nextElementSibling;
+      if (btn && btn.tagName === 'BUTTON' && !btn.disabled) btn.click();
+    }
+  }
+});
+</script>
+</body>
+</html>
